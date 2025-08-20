@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Study Tracker — Single File App</title>
+  <style>
+    :root {
+      --bg: #0f1724;
+      --card: #0b1220;
+      --accent: #7c3aed;
+      --muted: #94a3b8;
+      --glass: rgba(255,255,255,0.04);
+    }
+    * { box-sizing: border-box; font-family: Inter, ui-sans-serif, system-ui, Segoe UI, Roboto, 'Helvetica Neue', Arial; }
+    html, body { height: 100%; margin: 0; background: linear-gradient(180deg,#071033 0%, #071a2b 100%); color: #e6eef8; }
+    .wrap { max-width: 920px; margin: 32px auto; padding: 20px; }
+    header { display: flex; align-items: center; gap: 16px; }
+    h1 { margin: 0; font-size: 20px; }
+    .card { background: var(--card); padding: 16px; border-radius: 12px; box-shadow: 0 6px 18px rgba(2,6,23,0.6); }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      background: var(--glass);
+      border: 1px solid rgba(255,255,255,0.04);
+      color: inherit;
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+    button.primary {
+      background: linear-gradient(90deg,var(--accent),#5b21b6);
+      color: white;
+      font-weight: 600;
+    }
+    button:hover, button:focus {
+      background: var(--accent);
+      color: #fff;
+      outline: none;
+    }
+    .danger { background: transparent; border: 1px solid rgba(255,0,64,0.16); color: #ff7ea0; }
+    .big { font-size: 48px; font-weight: 700; letter-spacing: 1px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .row { display: flex; gap: 12px; align-items: center; }
+    .grow { flex: 1; }
+    .sessions { margin-top: 14px; max-height: 280px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { padding: 8px; border-bottom: 1px dashed rgba(255,255,255,0.03); font-size: 13px; }
+    th { color: var(--muted); text-align: left; }
+    .progress { height: 14px; background: rgba(255,255,255,0.04); border-radius: 10px; overflow: hidden; }
+    .progress > i { display: block; height: 100%; background: linear-gradient(90deg,#34d399,#60a5fa); width: 0%; }
+    .small { font-size: 12px; }
+    .foot { margin-top: 12px; color: var(--muted); font-size: 12px; }
+    .inline-input { padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.02); color: inherit; }
+    .flex-col { display: flex; flex-direction: column; }
+    @media (max-width:640px) { .big { font-size: 36px; } .wrap { padding: 12px; } }
+    #toast {
+      position: fixed; bottom: 24px; right: 24px; z-index: 1000;
+      min-width: 120px; padding: 12px 20px; background: var(--card); color: white;
+      border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="card" style="padding:10px 12px;display:flex;align-items:center;gap:12px">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path d="M12 6v6l4 2" stroke="#9ae6b4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div>
+          <h1>Study Tracker</h1>
+          <div class="muted" id="subtitle">Start a session — start, pause, stop, reset. Auto-saved locally.</div>
+        </div>
+      </div>
+    </header>
+
+    <main style="margin-top:16px">
+      <section class="card">
+        <div class="row" style="justify-content:space-between;align-items:flex-end">
+          <div>
+            <div class="big" id="display">00:00:00</div>
+            <div class="muted small">Current session length</div>
+          </div>
+          <div style="min-width:240px">
+            <label class="muted small">Daily goal (minutes)</label>
+            <div style="display:flex;gap:8px;margin-top:6px">
+              <input id="goalInput" type="number" min="1" class="inline-input" value="60" style="width:110px">
+              <button id="setGoalBtn" class="primary">Set Goal</button>
+            </div>
+            <div style="margin-top:10px">
+              <div class="progress" title="progress"><i id="progressBar"></i></div>
+              <div class="muted small" style="margin-top:6px">Today: <span id="todayTotal">0</span> / <span id="todayGoal">60</span> min</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px" class="controls">
+          <button id="startBtn" class="primary" aria-label="Start session">Start</button>
+          <button id="pauseBtn" aria-label="Pause session">Pause</button>
+          <button id="stopBtn" aria-label="Stop session">Stop</button>
+          <button id="resetSessionBtn" class="danger" aria-label="Reset current session">Reset Session</button>
+          <button id="resetAllBtn" style="background:transparent;border:1px solid rgba(255,255,255,0.04);" aria-label="Reset all sessions">Reset All (clear log)</button>
+          <div style="flex:1"></div>
+          <button id="exportBtn" aria-label="Export sessions">Export JSON</button>
+          <button id="importBtn" aria-label="Import sessions">Import</button>
+        </div>
+
+        <div class="sessions card" id="sessionsCard" style="margin-top:12px;padding:10px">
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+            <strong>Sessions</strong>
+            <div class="muted small">Click a session to remove it</div>
+          </div>
+          <table id="sessionsTable" aria-live="polite">
+            <thead><tr><th>Started</th><th>Stopped</th><th>Duration</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="foot">Tip: use the start/stop buttons. You can later add categories, Pomodoro timers, notifications, or sync with a server — the code is structured so you can extend it.</div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    // --- Sound Effects ---
+    const sounds = {
+      start: new Audio('https://cdn.jsdelivr.net/gh/thiskevinwang/sfx@main/start.mp3'),
+      pause: new Audio('https://cdn.jsdelivr.net/gh/thiskevinwang/sfx@main/pause.mp3'),
+      stop: new Audio('https://cdn.jsdelivr.net/gh/thiskevinwang/sfx@main/stop.mp3')
+    };
+
+    // --- DOM Elements ---
+    const STORAGE_KEY = 'study-tracker-v1';
+    const display = document.getElementById('display');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const resetSessionBtn = document.getElementById('resetSessionBtn');
+    const resetAllBtn = document.getElementById('resetAllBtn');
+    const sessionsTable = document.querySelector('#sessionsTable tbody');
+    const goalInput = document.getElementById('goalInput');
+    const setGoalBtn = document.getElementById('setGoalBtn');
+    const progressBar = document.getElementById('progressBar');
+    const todayTotal = document.getElementById('todayTotal');
+    const todayGoal = document.getElementById('todayGoal');
+    const exportBtn = document.getElementById('exportBtn');
+    const importBtn = document.getElementById('importBtn');
+    const toast = document.getElementById('toast');
+
+    // --- State ---
+    let state = {
+      running: false,
+      startedAt: null,
+      elapsedDuringSession: 0,
+      sessions: [],
+      goalMinutes: 60
+    };
+    let tickInterval = null;
+
+    // --- Utility Functions ---
+    function msToHMS(ms) {
+      if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) ms = 0;
+      const s = Math.floor(ms / 1000);
+      const hh = Math.floor(s / 3600).toString().padStart(2, '0');
+      const mm = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
+      const ss = (s % 60).toString().padStart(2, '0');
+      return `${hh}:${mm}:${ss}`;
+    }
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.style.opacity = 1;
+      setTimeout(() => { toast.style.opacity = 0; }, 1800);
+    }
+
+    function save() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { console.error('save failed', e); }
+    }
+
+    function load() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          if (Array.isArray(parsed.sessions)) {
+            parsed.sessions = parsed.sessions.map(s => ({
+              start: typeof s.start === 'number' ? s.start : (new Date(s.start)).getTime() || Date.now(),
+              stop: s.stop ? (typeof s.stop === 'number' ? s.stop : (new Date(s.stop)).getTime()) : null,
+              durationMs: typeof s.durationMs === 'number' ? s.durationMs : (s.durationMs ? Number(s.durationMs) : 0)
+            }));
+          } else {
+            parsed.sessions = [];
+          }
+          if (parsed.startedAt && typeof parsed.startedAt !== 'number') parsed.startedAt = (new Date(parsed.startedAt)).getTime();
+          parsed.elapsedDuringSession = typeof parsed.elapsedDuringSession === 'number' ? parsed.elapsedDuringSession : Number(parsed.elapsedDuringSession) || 0;
+          parsed.goalMinutes = typeof parsed.goalMinutes === 'number' ? parsed.goalMinutes : Number(parsed.goalMinutes) || 60;
+          if (parsed.running && parsed.startedAt) {
+            parsed.elapsedDuringSession = (parsed.elapsedDuringSession || 0) + (Date.now() - parsed.startedAt);
+            parsed.startedAt = null;
+            parsed.running = false;
+          }
+          state = Object.assign(state, parsed);
+        }
+      } catch (e) { console.error('Failed to load state', e); }
+    }
+
+    // --- Render Function ---
+    function render() {
+      let ms = Number(state.elapsedDuringSession) || 0;
+      if (state.running && state.startedAt) { ms += Date.now() - state.startedAt; }
+      display.textContent = msToHMS(ms);
+
+      // Sessions Table
+      sessionsTable.innerHTML = '';
+      state.sessions.slice().reverse().forEach((s, idx) => {
+        const tr = document.createElement('tr');
+        const started = s.start ? new Date(s.start).toLocaleString() : '-';
+        const stopped = s.stop ? new Date(s.stop).toLocaleString() : '-';
+        const duration = msToHMS(s.durationMs || 0);
+        tr.innerHTML = `<td>${started}</td><td>${stopped}</td><td>${duration}</td>`;
+        tr.title = 'Click to remove this session';
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', () => {
+          if (window.confirm('Remove this session?')) {
+            const realIndex = state.sessions.length - 1 - idx;
+            if (realIndex >= 0 && realIndex < state.sessions.length) {
+              state.sessions.splice(realIndex, 1);
+              save(); render();
+              showToast('Session removed');
+            }
+          }
+        });
+        sessionsTable.appendChild(tr);
+      });
+
+      // Progress Bar
+      const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+      let sumMs = 0;
+      state.sessions.forEach(s => { if (s.start && s.start >= startOfToday.getTime()) sumMs += (s.durationMs || 0); });
+      if (state.running && state.startedAt && state.startedAt >= startOfToday.getTime()) {
+        sumMs += (Date.now() - state.startedAt) + (state.elapsedDuringSession || 0);
+      }
+      const sumMin = Math.round(sumMs / 60000);
+      todayTotal.textContent = sumMin;
+      todayGoal.textContent = state.goalMinutes;
+      const pct = state.goalMinutes > 0 ? Math.min(100, Math.round((sumMin / state.goalMinutes) * 100)) : 0;
+      progressBar.style.width = pct + '%';
+
+      // Button States
+      startBtn.disabled = !!state.running;
+      pauseBtn.disabled = !state.running;
+      stopBtn.disabled = !state.running && !(state.elapsedDuringSession > 0);
+    }
+
+    // --- Session Controls ---
+    function start() {
+      if (state.running) return;
+      clearInterval(tickInterval);
+      state.running = true;
+      state.startedAt = Date.now();
+      tickInterval = setInterval(render, 250);
+      sounds.start.play();
+      save(); render();
+      showToast('Session started');
+    }
+
+    function pause() {
+      if (!state.running || !state.startedAt) return;
+      state.elapsedDuringSession += Date.now() - state.startedAt;
+      state.running = false;
+      state.startedAt = null;
+      clearInterval(tickInterval);
+      sounds.pause.play();
+      save(); render();
+      showToast('Session paused');
+    }
+
+    function stop() {
+      if (!state.running && !(state.elapsedDuringSession > 0)) return;
+      let stoppedAt = Date.now();
+      let duration = (state.running && state.startedAt)
+        ? (stoppedAt - state.startedAt) + (state.elapsedDuringSession || 0)
+        : (state.elapsedDuringSession || 0);
+      let startTime = state.running ? state.startedAt : null;
+      state.sessions.push({ start: startTime || stoppedAt, stop: stoppedAt, durationMs: duration });
+      state.running = false;
+      state.startedAt = null;
+      state.elapsedDuringSession = 0;
+      clearInterval(tickInterval);
+      sounds.stop.play();
+      save(); render();
+      showToast('Session stopped');
+    }
+
+    function resetSession() {
+      if (window.confirm('Reset current session timer?')) {
+        state.running = false; state.startedAt = null; state.elapsedDuringSession = 0;
+        clearInterval(tickInterval);
+        save(); render();
+        showToast('Session reset');
+      }
+    }
+
+    function resetAll() {
+      if (window.confirm('Reset everything and clear all saved sessions?')) {
+        state = { running: false, startedAt: null, elapsedDuringSession: 0, sessions: [], goalMinutes: state.goalMinutes || 60 };
+        localStorage.removeItem(STORAGE_KEY);
+        save(); render();
+        showToast('All sessions cleared');
+      }
+    }
+
+    // --- Event Listeners ---
+    startBtn.addEventListener('click', start);
+    pauseBtn.addEventListener('click', pause);
+    stopBtn.addEventListener('click', stop);
+    resetSessionBtn.addEventListener('click', resetSession);
+    resetAllBtn.addEventListener('click', resetAll);
+
+    setGoalBtn.addEventListener('click', () => {
+      const val = parseInt(goalInput.value, 10);
+      if (!isNaN(val) && val > 0) {
+        state.goalMinutes = val;
+        save(); render();
+        showToast('Goal updated');
+      }
+    });
+
+    exportBtn.addEventListener('click', () => {
+      const dataStr = JSON.stringify(state, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'study-tracker-export.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('Exported as JSON');
+    });
+
+    importBtn.addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/json';
+      input.onchange = e => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          try {
+            const imported = JSON.parse(ev.target.result);
+            if (imported && Array.isArray(imported.sessions)) {
+              const cleaned = imported.sessions.map(s => ({
+                start: typeof s.start === 'number' ? s.start : (new Date(s.start)).getTime() || Date.now(),
+                stop: s.stop ? (typeof s.stop === 'number' ? s.stop : (new Date(s.stop)).getTime()) : null,
+                durationMs: typeof s.durationMs === 'number' ? s.durationMs : (s.durationMs ? Number(s.durationMs) : 0)
+              }));
+              if (window.confirm('Merge imported sessions into existing log? Click Cancel to replace existing log.')) {
+                state.sessions = state.sessions.concat(cleaned);
+              } else {
+                state.sessions = cleaned;
+              }
+              if (typeof imported.goalMinutes === 'number' && imported.goalMinutes > 0) state.goalMinutes = imported.goalMinutes;
+              save(); render();
+              showToast('Import successful');
+            } else {
+              window.alert('Invalid file format');
+            }
+          } catch (err) { window.alert('Failed to import: ' + err.message); }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') { e.preventDefault(); state.running ? stop() : start(); }
+      if (e.key && e.key.toLowerCase() === 'r') {
+        if (e.shiftKey) resetAll(); else resetSession();
+      }
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (state.running && state.startedAt) {
+        state.elapsedDuringSession = (state.elapsedDuringSession || 0) + (Date.now() - state.startedAt);
+        state.startedAt = null;
+        state.running = false;
+      }
+      save();
+    });
+
+    // --- Initialize ---
+    load();
+    if (!state.goalMinutes) state.goalMinutes = 60;
+    goalInput.value = state.goalMinutes;
+    render();
+  </script>
+</body>
+</html>
